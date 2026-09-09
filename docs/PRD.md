@@ -280,7 +280,179 @@ Track per video:
 - Regeneration count
 - Incremental AI cost
 
-## 8. Validation Plan
+## 8. Google Services & Free Resource Strategy
+
+Phase 1 is deliberately designed around free access where practical. Limits and pricing can change, so the application must treat provider quotas as configuration rather than hard-coded business rules.
+
+### 8.1 Google Flow — video generation
+
+**Purpose:** Generate short visual clips/scenes.
+
+**Current free allocation assumption (checked September 9, 2026):**
+
+- Non-subscribers receive **50 Flow credits per day**.
+- Unused daily credits do not roll over.
+- Daily refresh is triggered by the first generation.
+- Current documented non-Ultra generation costs include:
+  - Veo 3.1 Lite: 10 credits/generation.
+  - Veo 3.1 Fast: 20 credits/generation.
+  - Veo 3.1 Quality: 100 credits/generation.
+  - Gemini Omni Flash 720p: 7–15 credits depending on duration.
+  - Gemini Omni Flash 360p: 4–7 credits depending on duration.
+- A single Flow request may create multiple generations, so request count is not equivalent to credit consumption.
+
+**Application threshold policy:**
+
+| Setting | Default |
+|---|---:|
+| Daily allocation | 50 credits |
+| Warning threshold | 40 credits used |
+| Hard daily budget | 50 credits |
+| Minimum reserve | 10 credits |
+| Per-generation safety check | Must have enough configured credits before a tracked generation |
+
+The engine must not call Flow programmatically in MVP. Generated clips are imported after human use of Flow.
+
+The credit values above are **configuration defaults based on the current documented limits**, not permanent guarantees.
+
+### 8.2 Gemini API / Google AI Studio — AI generation
+
+**Purpose:**
+
+- Research synthesis
+- Content briefs
+- Script generation
+- Storyboards
+- Metadata
+- Structured content evaluation
+
+Google's Gemini API free tier has model-specific RPM, TPM and RPD limits. Google states that these limits vary by model and can change; active limits should be checked in AI Studio.
+
+**Important design rule:** Do not hard-code a single universal Gemini quota.
+
+Configuration must support:
+
+```yaml
+gemini:
+  model: <configured-model>
+  limits:
+    requests_per_minute: null
+    tokens_per_minute: null
+    requests_per_day: null
+  thresholds:
+    warning_percent: 80
+    hard_stop_percent: 100
+    minimum_reserve_percent: 20
+  fail_safe:
+    stop_on_unknown_quota: false
+```
+
+At startup or provider initialization, the application should use the configured limits. If a quota is unknown, the application must still enforce a conservative local request/token budget and clearly report that it is a local safety budget rather than Google's official quota.
+
+**Default local safety thresholds:**
+
+- Warning: 80% of configured quota.
+- Hard stop: 100% of configured quota.
+- Reserve: 20% where a provider limit is known.
+- Never automatically enable paid billing.
+
+Google Search grounding may have separate limits and must be tracked separately if enabled.
+
+### 8.3 NotebookLM — source-grounded research
+
+**Purpose:** Human-led research, source grounding, fact checking, and research-note generation.
+
+NotebookLM is a user-facing research product in this experiment, not a programmatic backend dependency.
+
+Because its quotas/features can differ by account and plan, **do not hard-code undocumented NotebookLM quotas** into the application.
+
+Operational threshold:
+
+- No automated API usage in MVP.
+- Record research sessions/source sets manually in content metadata.
+- If a product limit is encountered, pause/reuse sources or switch to Gemini/official documentation.
+- No paid upgrade is required for the MVP.
+
+### 8.4 Google AI Studio
+
+**Purpose:** Model experimentation, API-key/project management, prompt testing, and observing active Gemini limits.
+
+AI Studio itself is not a separate application runtime dependency.
+
+Operational threshold:
+
+- Billing must not be enabled solely for Phase 1.
+- Model-specific free-tier limits are the controlling API limits.
+- Active limits should be checked in AI Studio before increasing automation.
+- Never assume that a model is free merely because it is available in AI Studio.
+
+### 8.5 YouTube
+
+**Purpose:** Distribution and audience validation.
+
+The MVP can publish manually and record analytics manually. YouTube API integration is not required initially.
+
+Operational threshold:
+
+- No automated publishing in MVP.
+- No API quota dependency in the initial workflow.
+- If YouTube Data API is added later, API quota must be treated as a separate configurable provider limit.
+- Analytics should be recorded after publication.
+
+### 8.6 Google Drive
+
+**Purpose:** Optional manual storage/sharing of working documents or generated assets.
+
+Drive is not an application dependency in MVP.
+
+Operational threshold:
+
+- No Drive API dependency.
+- No automated upload requirement.
+- Local filesystem remains the source for production artifacts.
+
+### 8.7 Future Google Cloud / Firebase
+
+Cloud Run, Firebase, Cloud Storage, BigQuery and similar services are explicitly **out of scope for MVP**.
+
+They may be evaluated only after the local workflow is validated.
+
+## 9. Provider Budget & Threshold Model
+
+Every provider that has a measurable quota or credit system must expose a local budget configuration.
+
+Conceptually:
+
+```text
+Provider
+  ├── Official quota (if known)
+  ├── Local daily/monthly budget
+  ├── Warning threshold
+  ├── Hard-stop threshold
+  ├── Reserve
+  └── Current usage
+```
+
+Required behavior:
+
+1. Track usage when the application controls the request.
+2. Warn before the configured warning threshold.
+3. Refuse additional automated work at the hard-stop threshold.
+4. Never silently switch to paid usage.
+5. Never assume an undocumented quota.
+6. Persist enough usage metadata to explain why a request was blocked.
+7. Allow limits to be updated without changing application code.
+
+### Default safety policy
+
+- Warning: **80%**
+- Hard stop: **100%**
+- Reserve: **20%**
+- Paid fallback: **disabled by default**
+
+The threshold percentages are our **local safety policy**, not Google's official limits.
+
+## 10. Validation Plan
 
 Initial batch: **10–15 videos**.
 
@@ -303,7 +475,7 @@ The objective is learning, not maximizing volume.
 6. Can technical credibility be maintained?
 7. Is further automation worth the engineering effort?
 
-## 9. Metrics
+## 11. Metrics
 
 ### Audience
 
@@ -336,7 +508,7 @@ Score 1–5:
 
 The primary business signal is **audience value per unit of production effort**, not raw views alone.
 
-## 10. Cost Strategy
+## 12. Cost Strategy
 
 Target incremental cost during validation: **₹0 wherever practical**.
 
@@ -345,11 +517,11 @@ Priority:
 1. Free Google offerings.
 2. Existing subscriptions/accounts.
 3. Open-source/local tools.
-4. Paid tools only when they materially improve validation.
+4. Paid tools only when they materially improve validation and are explicitly approved.
 
-All actual usage and limits should be documented because free tiers can change.
+The application must never automatically move from a free tier to paid usage.
 
-## 11. Technology Direction
+## 13. Technology Direction
 
 - Python
 - Pydantic
@@ -364,7 +536,7 @@ All actual usage and limits should be documented because free tiers can change.
 
 See `docs/ARCHITECTURE.md` for implementation details.
 
-## 12. Frontend Strategy
+## 14. Frontend Strategy
 
 **No frontend is required for the initial MVP.**
 
@@ -387,7 +559,7 @@ If a frontend is introduced, it should call the same application/service layer r
 
 Recommended future direction: a lightweight web UI backed by the Python application/API. Do not implement it until the CLI workflow is validated.
 
-## 13. Repository Strategy
+## 15. Repository Strategy
 
 The repository is intentionally **public** because the project is also a portfolio and engineering showcase.
 
@@ -414,7 +586,7 @@ Never commit:
 
 Private operational/business material can live outside this repository if needed later.
 
-## 14. MVP Definition of Done
+## 16. MVP Definition of Done
 
 - [ ] Repository foundation exists.
 - [ ] Topic can be represented as structured data.
@@ -433,7 +605,7 @@ Private operational/business material can live outside this repository if needed
 - [ ] Analytics can be recorded.
 - [ ] Experiment results are documented.
 
-## 15. Success Criteria
+## 17. Success Criteria
 
 Phase 1 succeeds if:
 
@@ -445,7 +617,7 @@ Phase 1 succeeds if:
 - The repository demonstrates strong AI/software engineering practices.
 - There is enough evidence to decide whether to continue, pivot, or stop.
 
-## 16. Future Extensions
+## 18. Future Extensions
 
 If validated:
 
@@ -459,7 +631,7 @@ If validated:
 - Article → multiple Shorts repurposing
 - Distribution for Phase 2 micro-SaaS
 
-## 17. Guiding Principle
+## 19. Guiding Principle
 
 > **Use AI to increase leverage, not to remove engineering judgment.**
 
