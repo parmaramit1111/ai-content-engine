@@ -311,7 +311,7 @@ Phase 1 is deliberately designed around free access where practical. Limits and 
 | Minimum reserve | 10 credits |
 | Per-generation safety check | Must have enough configured credits before a tracked generation |
 
-The engine must not call Flow programmatically in MVP. Generated clips are imported after human use of Flow.
+The engine must not call Flow programmatically in MVP. Generated clips are imported after human use of Flow. The local Flow budget tracker protects the configured reserve even though Flow usage itself is entered/imported manually.
 
 The credit values above are **configuration defaults based on the current documented limits**, not permanent guarantees.
 
@@ -347,7 +347,7 @@ gemini:
     stop_on_unknown_quota: false
 ```
 
-At startup or provider initialization, the application should use the configured limits. If a quota is unknown, the application must still enforce a conservative local request/token budget and clearly report that it is a local safety budget rather than Google's official quota.
+At startup or provider initialization, the application should use the configured limits. If an official quota is unknown, an explicit local budget must be configured before automated work is allowed. The application must clearly report that this is a local safety budget rather than Google's official quota.
 
 **Default local safety thresholds:**
 
