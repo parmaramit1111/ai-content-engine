@@ -225,7 +225,7 @@ budgets:
     paid_fallback: false
 ```
 
-For NotebookLM and manually operated services, the budget object is primarily an operational record. It must not invent unsupported provider quotas.
+For NotebookLM and manually operated services, the budget object is primarily an operational record. It must not invent unsupported provider quotas. For an automated provider, a local budget must be explicitly configured before automated work is allowed.
 
 ## 6. Google Flow Integration
 
