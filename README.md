@@ -62,7 +62,8 @@ See:
 
 - [Product Requirements](docs/PRD.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [Claude Code Instructions](CLAUDE.md)
+
+These documents are the source of truth for product requirements and technical design. Claude Code should use them as the project specification when implementing the system.
 
 ## Technology Direction
 
@@ -106,7 +107,7 @@ The stable branch is:
 main
 ```
 
-Development should follow the instructions in `CLAUDE.md`.
+Development decisions should follow `docs/PRD.md` and `docs/ARCHITECTURE.md`.
 
 ## Validation Target
 
