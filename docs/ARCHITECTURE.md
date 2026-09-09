@@ -13,6 +13,7 @@ The architecture must optimize for:
 - CLI-first MVP.
 - Optional future frontend without a rewrite.
 - Portfolio-quality engineering.
+- Explicit quota/budget protection so free-tier experiments cannot silently create paid usage.
 
 ## 2. Architectural Approach
 
@@ -26,9 +27,9 @@ Application Services
 Domain Models + Workflow
         ↓
 Provider Interfaces
-   ┌────┼─────┐
-   ↓    ↓     ↓
-Gemini Flow  TTS
+   ┌────┼───────────┐
+   ↓    ↓     ↓     ↓
+Gemini Flow   TTS  Research
         ↓
  Media Pipeline
         ↓
@@ -98,12 +99,295 @@ GitHub Actions:
 - Type check if enabled
 - Run tests
 
-## 4. Project Structure
+## 4. External Services & Provider Boundaries
+
+### 4.1 Service responsibilities
+
+| Service | Responsibility | MVP integration |
+|---|---|---|
+| Gemini API | Structured AI generation: briefs, scripts, storyboards, metadata | Programmatic |
+| Google AI Studio | Model/API project management and experimentation | Human/admin |
+| NotebookLM | Source-grounded research and fact checking | Human-in-the-loop |
+| Google Flow | Video clip generation | Human-in-the-loop |
+| FFmpeg | Deterministic media assembly | Programmatic |
+| YouTube | Distribution and analytics | Manual in MVP |
+| Google Drive | Optional asset/document sharing | Manual/optional |
+
+The core application must not treat NotebookLM, Flow, or Drive as mandatory APIs in MVP.
+
+### 4.2 Provider abstraction
+
+External services must sit behind small interfaces where the application directly calls them.
+
+Conceptually:
+
+```python
+class TextGenerationProvider(Protocol):
+    async def generate(...): ...
+
+class ResearchProvider(Protocol):
+    async def research(...): ...
+
+class VideoProvider(Protocol):
+    async def generate_scene(...): ...
+
+class TTSProvider(Protocol):
+    async def synthesize(...): ...
+```
+
+Do not create abstractions for hypothetical providers. Introduce an interface when it protects the domain/application layer from a real external dependency.
+
+## 5. Quota, Budget & Threshold Architecture
+
+Quota protection is a first-class concern because Phase 1 is explicitly a free/low-cost experiment.
+
+### 5.1 Principles
+
+- Provider limits are configuration, not hard-coded business rules.
+- Official quotas and our local safety budgets are separate concepts.
+- Unknown quotas must never be presented as known quotas.
+- The application must never silently enable paid usage.
+- Warning and hard-stop thresholds must be configurable.
+- Usage must be observable and attributable to a content/workflow ID where possible.
+
+### 5.2 Budget model
+
+Every measurable provider budget should conceptually contain:
+
+```text
+ProviderBudget
+├── provider
+├── model (optional)
+├── period
+├── official_limit (optional)
+├── local_budget
+├── warning_threshold
+├── hard_stop_threshold
+├── reserve
+├── current_usage
+├── last_reset
+└── reset_strategy
+```
+
+### 5.3 Default threshold policy
+
+```text
+Warning threshold: 80%
+Hard stop:         100%
+Reserve:           20%
+Paid fallback:     Disabled
+```
+
+These percentages are **our safety policy**, not provider guarantees.
+
+### 5.4 Configuration example
+
+```yaml
+budgets:
+  flow:
+    period: daily
+    official_limit: 50
+    local_budget: 50
+    warning_percent: 80
+    hard_stop_percent: 100
+    reserve_percent: 20
+    reset: first_generation_plus_24h
+
+  gemini:
+    model: <configured-model>
+    period: provider-defined
+    official_limit:
+      requests_per_minute: null
+      tokens_per_minute: null
+      requests_per_day: null
+    local_budget:
+      requests_per_day: null
+      tokens_per_day: null
+    warning_percent: 80
+    hard_stop_percent: 100
+    reserve_percent: 20
+    paid_fallback: false
+
+  notebooklm:
+    period: provider-defined
+    official_limit: null
+    local_budget: null
+    warning_percent: 80
+    hard_stop_percent: 100
+    paid_fallback: false
+
+  youtube:
+    period: provider-defined
+    official_limit: null
+    local_budget: null
+    warning_percent: 80
+    hard_stop_percent: 100
+    paid_fallback: false
+```
+
+For NotebookLM and manually operated services, the budget object is primarily an operational record. It must not invent unsupported provider quotas.
+
+## 6. Google Flow Integration
+
+Google Flow may initially be a human-in-the-loop step rather than a programmatic API.
+
+Current free-tier assumption, checked September 9, 2026:
+
+- 50 credits/day for non-subscribers.
+- Unused daily credits do not roll over.
+- Daily refresh is triggered by the first generation.
+- Current documented generation costs include 10 credits for Veo 3.1 Lite, 20 for Veo 3.1 Fast, and 100 for Veo 3.1 Quality.
+- Gemini Omni Flash generation costs vary by resolution and duration.
+
+Therefore:
+
+```
+Storyboard
+   ↓
+Visual prompt package
+   ↓
+Google Flow
+   ↓
+Exported clips
+   ↓
+Asset ingestion
+   ↓
+FFmpeg assembly
+```
+
+The application should track manually entered/imported Flow usage rather than pretending it can inspect the user's Flow account.
+
+### Flow safety defaults
+
+```text
+Daily allocation: 50
+Warning:          40 used
+Hard stop:        50 used
+Reserve:          10
+```
+
+If Google changes these limits, update configuration/documentation rather than application logic.
+
+## 7. Gemini API Integration
+
+Gemini is the primary programmatic AI provider.
+
+Use it for:
+
+- Content briefs
+- Script generation
+- Storyboards
+- Structured metadata
+- Evaluation
+- Research synthesis where appropriate
+
+Google documents Gemini API rate limits using RPM, TPM and RPD, with limits varying by model and usage tier.
+
+The application must therefore support model-specific limits:
+
+```text
+GeminiBudget
+├── model
+├── RPM
+├── TPM
+├── RPD
+├── local daily request budget
+├── local daily token budget
+└── warning/hard-stop thresholds
+```
+
+Do not assume one global Gemini quota.
+
+If an official limit is unknown, use a local safety budget and label it as such.
+
+### Gemini safety defaults
+
+- Warning: 80% of configured limit.
+- Hard stop: 100%.
+- Reserve: 20%.
+- Paid fallback: disabled.
+- Model changes require explicit configuration.
+
+### Google Search grounding
+
+If Gemini Search grounding is enabled later, track its request budget independently from normal Gemini generation because tool quotas can have separate limits.
+
+## 8. NotebookLM Integration
+
+NotebookLM is a human-operated research tool in MVP.
+
+```
+Sources
+   ↓
+NotebookLM
+   ↓
+Research notes
+   ↓
+Content brief
+   ↓
+Gemini
+```
+
+Do not build an unofficial or undocumented NotebookLM API integration.
+
+Do not hard-code a NotebookLM quota that has not been confirmed by official documentation for the user's account/plan.
+
+The application may record:
+
+- Research session ID/name
+- Source set
+- Date
+- Topic
+- Output notes
+- Human verification status
+
+## 9. Google AI Studio
+
+AI Studio is primarily used for:
+
+- Creating/managing Gemini API projects and keys.
+- Testing prompts/models.
+- Reviewing active model limits.
+- Validating free-tier behavior before implementation.
+
+It is not a runtime dependency.
+
+Billing should remain disabled for the Phase 1 free experiment unless explicitly approved.
+
+## 10. YouTube Integration
+
+YouTube is the first distribution channel.
+
+MVP:
+
+- Upload manually.
+- Record publication metadata manually.
+- Record analytics manually.
+
+No YouTube API is required initially.
+
+If the YouTube Data API is introduced later:
+
+- Track API quota separately.
+- Configure a local daily API budget.
+- Use warning/hard-stop thresholds.
+- Never silently consume paid services.
+
+## 11. Google Drive
+
+Drive is optional manual storage.
+
+MVP:
+
+- No Drive API dependency.
+- Local filesystem remains the production source.
+- Drive may be used manually for sharing or backup.
+
+## 12. Project Structure
 
 ```
 ai-content-engine/
 ├── README.md
-├── CLAUDE.md
 ├── LICENSE
 ├── pyproject.toml
 ├── .gitignore
@@ -137,6 +421,10 @@ ai-content-engine/
 │       │   └── assembly.py
 │       ├── storage/
 │       │   └── filesystem.py
+│       ├── budgets/
+│       │   ├── models.py
+│       │   ├── tracker.py
+│       │   └── policy.py
 │       ├── config.py
 │       └── cli.py
 │
@@ -169,7 +457,7 @@ ai-content-engine/
 
 Generated media should generally be ignored by Git. Keep only intentionally selected small/sample assets in the public repository.
 
-## 5. Domain Model
+## 13. Domain Model
 
 Core entities:
 
@@ -245,51 +533,22 @@ status
 validation
 ```
 
-## 6. Provider Abstraction
+### ProviderUsage
 
-External services must sit behind small interfaces.
-
-Conceptually:
-
-```python
-class TextGenerationProvider(Protocol):
-    async def generate(...): ...
-
-class ResearchProvider(Protocol):
-    async def research(...): ...
-
-class VideoProvider(Protocol):
-    async def generate_scene(...): ...
-
-class TTSProvider(Protocol):
-    async def synthesize(...): ...
+```text
+provider
+model
+operation
+content_id
+units
+unit_type
+timestamp
+metadata
 ```
 
-Do not create abstractions for hypothetical providers. Introduce an interface when it protects the domain/application layer from a real external dependency.
+ProviderUsage allows the application to explain how a local budget was consumed without claiming that it has access to provider-side account balances.
 
-## 7. Flow Integration
-
-Google Flow may initially be a human-in-the-loop step rather than a programmatic API.
-
-Therefore:
-
-```
-Storyboard
-   ↓
-Visual prompt package
-   ↓
-Google Flow
-   ↓
-Exported clips
-   ↓
-Asset ingestion
-   ↓
-FFmpeg assembly
-```
-
-The architecture must support a future automated Flow integration without requiring the rest of the application to know Flow-specific details.
-
-## 8. CLI
+## 14. CLI
 
 Initial commands should be small and composable.
 
@@ -305,13 +564,16 @@ content assets prepare
 content video assemble
 content validate
 content package
+content budget status
 ```
 
 Exact command names can be refined during implementation.
 
 Commands should call application services rather than contain business logic.
 
-## 9. Optional Frontend
+The budget command should show local tracked usage, configured limits, warning state, and hard-stop state.
+
+## 15. Optional Frontend
 
 A frontend is **not part of the initial MVP**, but the architecture must permit one.
 
@@ -338,7 +600,7 @@ If implemented, likely candidates are:
 
 Do not introduce FastAPI, React, or a database merely because they are familiar technologies. The CLI MVP should remain simple.
 
-## 10. Artifact Strategy
+## 16. Artifact Strategy
 
 Git should contain:
 
@@ -360,7 +622,7 @@ Git should not normally contain:
 
 Use `.gitignore` and document local artifact directories.
 
-## 11. Configuration
+## 17. Configuration
 
 Use environment variables for credentials and runtime settings.
 
@@ -372,11 +634,20 @@ CONTENT_ENGINE_ENV=development
 ASSET_ROOT=./assets
 ```
 
+Budget configuration should be separate from secrets.
+
+Example:
+
+```text
+CONFIG_ROOT=./config
+BUDGET_CONFIG=./config/budgets.yaml
+```
+
 Never commit real credentials.
 
 Use `.env.example` as the configuration contract.
 
-## 12. Error Handling
+## 18. Error Handling
 
 Errors should be:
 
@@ -388,7 +659,16 @@ Errors should be:
 
 External provider failures should not corrupt content state.
 
-## 13. Observability
+Quota/budget errors must identify:
+
+- Provider
+- Model/operation where applicable
+- Current local usage
+- Configured threshold
+- Whether the limit is official or local
+- Recommended next action
+
+## 19. Observability
 
 MVP:
 
@@ -397,6 +677,8 @@ MVP:
 - Provider request timing where available.
 - Production step timing.
 - Error counts.
+- Provider usage events.
+- Budget warning/hard-stop events.
 
 Future:
 
@@ -406,7 +688,7 @@ Future:
 
 Do not overbuild observability before the workflow has meaningful volume.
 
-## 14. Testing Strategy
+## 20. Testing Strategy
 
 ### Unit
 
@@ -418,6 +700,10 @@ Test:
 - Metadata serialization
 - File handling
 - FFmpeg command construction
+- Budget calculations
+- Warning thresholds
+- Hard-stop behavior
+- Reset-period handling
 
 ### Integration
 
@@ -426,10 +712,11 @@ Test:
 - Provider adapters
 - End-to-end sample workflow
 - Video assembly with fixture assets
+- Budget tracking around provider calls
 
 External AI calls should be mocked in normal CI.
 
-## 15. Security
+## 21. Security
 
 - Secrets only through environment/configuration.
 - No credential logging.
@@ -437,8 +724,9 @@ External AI calls should be mocked in normal CI.
 - Avoid shell injection when invoking FFmpeg.
 - Treat generated content and downloaded assets as untrusted input.
 - Do not automatically execute generated code or prompts.
+- Paid billing must never be enabled by application behavior.
 
-## 16. Architecture Decision Records
+## 22. Architecture Decision Records
 
 Use `docs/decisions/` for decisions that materially affect the project.
 
@@ -448,14 +736,15 @@ Examples:
 - ADR-002 Local filesystem for MVP storage
 - ADR-003 FFmpeg as media foundation
 - ADR-004 Human review before publishing
+- ADR-005 Provider budget and quota protection
 
 Keep ADRs short and decision-focused.
 
-## 17. Evolution Path
+## 23. Evolution Path
 
 ### MVP
 
-CLI + local files + AI providers + FFmpeg.
+CLI + local files + AI providers + FFmpeg + local budget tracking.
 
 ### Extended MVP
 
@@ -466,6 +755,7 @@ Add:
 - Review workflow
 - Basic FastAPI API
 - Optional web frontend
+- Automated usage/analytics collection where supported
 
 ### Production
 
