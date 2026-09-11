@@ -40,6 +40,7 @@ class Script(BaseModel):
 class ContentBrief(BaseModel):
     """Structured content brief (FR-03, PRD §4, ARCHITECTURE §13)."""
 
+    id: UUID = Field(default_factory=uuid4)
     topic: str = Field(description="Topic title")
     problem: str = Field(description="Problem being addressed")
     core_explanation: str = Field(description="Core technical explanation")
