@@ -1,0 +1,57 @@
+# Budget & Quota Configuration (ARCHITECTURE §5.4)
+#
+# This file defines provider-level budget configurations. The structure maps
+# directly to ProviderBudget instances via load_budgets_from_config().
+#
+# Three config shapes are supported:
+#   - Numeric budgets (Flow): integer official_limit/local_budget; thresholds
+#     are calculated from policy percentages.
+#   - Dict budgets (Gemini): multi-dimensional dict with null values; treated
+#     as None — automated work requires explicit local_budget configuration.
+#   - Null budgets (NotebookLM, YouTube): both limits None — manual providers.
+#
+# Env override: BUDGET_CONFIG points to this file path (default: ./config/budgets.yaml).
+
+budgets:
+  flow:
+    period: daily
+    official_limit: 50
+    local_budget: 50
+    warning_percent: 80
+    hard_stop_percent: 100
+    reserve_percent: 20
+    reset: first_generation_plus_24h
+
+  gemini:
+    model: null
+    period: provider-defined
+    official_limit:
+      requests_per_minute: null
+      tokens_per_minute: null
+      requests_per_day: null
+      tokens_per_day: null
+    local_budget:
+      requests_per_day: null
+      tokens_per_day: null
+    warning_percent: 80
+    hard_stop_percent: 100
+    reserve_percent: 20
+    paid_fallback: false
+
+  notebooklm:
+    period: provider-defined
+    official_limit: null
+    local_budget: null
+    warning_percent: 80
+    hard_stop_percent: 100
+    reserve_percent: 20
+    paid_fallback: false
+
+  youtube:
+    period: provider-defined
+    official_limit: null
+    local_budget: null
+    warning_percent: 80
+    hard_stop_percent: 100
+    reserve_percent: 20
+    paid_fallback: false
