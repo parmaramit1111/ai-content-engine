@@ -60,6 +60,32 @@ class ProviderBudget(BaseModel):
         description="Protected reserve (absolute units, held back from consumption).",
     )
     current_usage: int = Field(default=0, ge=0, description="Units consumed in the current period")
+    usage_by_unit_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-unit-type usage tracking (e.g. 'requests', 'tokens'). "
+        "Empty dict for single-dimensional providers that use current_usage directly.",
+    )
+    local_budget_by_unit_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-dimension local budgets (e.g. {'requests': 10, 'tokens': 100000}). "
+        "When populated, takes precedence over the single local_budget field per dimension.",
+    )
+    official_limit_by_unit_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-dimension official provider quotas.",
+    )
+    warning_threshold_by_unit_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-dimension warning thresholds (populated by BudgetTracker).",
+    )
+    hard_stop_threshold_by_unit_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-dimension hard-stop thresholds (populated by BudgetTracker).",
+    )
+    reserve_by_unit_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-dimension reserves (populated by BudgetTracker).",
+    )
     last_reset: datetime | None = Field(
         default=None,
         description="When usage was last reset to zero.",

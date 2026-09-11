@@ -674,3 +674,142 @@ class TestBudgetCheckResult:
         assert result.status == BudgetStatus.WARNING
         assert result.is_official_limit is True
         assert budget.warning_threshold == 40
+
+
+# --- Multi-dimensional budget tests ---
+
+
+class TestMultiDimensionalBudget:
+    """Tests for per-unit-type usage tracking (requests vs tokens)."""
+
+    def _gemini_budget(self) -> ProviderBudget:
+        thresholds = calculate_thresholds(100, BudgetPolicy())
+        return ProviderBudget(
+            provider="gemini",
+            period=BudgetPeriod.DAILY,
+            official_limit=None,
+            local_budget=100,
+            warning_threshold=thresholds.warning,
+            hard_stop_threshold=thresholds.hard_stop,
+            reserve=thresholds.reserve,
+        )
+
+    def test_unit_types_are_independent(self):
+        """Recording tokens must not affect the request counter and vice versa."""
+        budget = self._gemini_budget()
+        tracker = BudgetTracker({"gemini": budget})
+
+        tracker.record_usage(
+            "gemini", units=10, operation="gen", model="m1", unit_type="requests"
+        )
+        tracker.record_usage(
+            "gemini", units=200, operation="gen", model="m1", unit_type="tokens", force=True
+        )
+
+        assert budget.current_usage == 10  # requests only
+        assert budget.usage_by_unit_type["tokens"] == 200
+
+    def test_token_check_sees_token_usage(self):
+        """check_allowance with unit_type='tokens' must see token counter."""
+        budget = self._gemini_budget()
+        tracker = BudgetTracker({"gemini": budget})
+
+        tracker.record_usage(
+            "gemini", units=100, operation="gen", model="m1", unit_type="tokens", force=True
+        )
+
+        result = tracker.check_allowance(
+            "gemini", units=1, operation="gen", model="m1", unit_type="tokens"
+        )
+        assert result.status == BudgetStatus.HARD_STOP
+
+    def test_request_check_unaffected_by_tokens(self):
+        """Exhausting the token budget must not block request-level checks."""
+        budget = self._gemini_budget()
+        tracker = BudgetTracker({"gemini": budget})
+
+        tracker.record_usage(
+            "gemini", units=100, operation="gen", model="m1", unit_type="tokens", force=True
+        )
+
+        result = tracker.check_allowance(
+            "gemini", units=1, operation="gen", model="m1", unit_type="requests"
+        )
+        assert result.status == BudgetStatus.OK
+
+    def test_force_records_despite_hard_stop(self):
+        """force=True always records usage even when it exceeds the hard-stop."""
+        budget = self._gemini_budget()
+        budget.current_usage = 99
+        tracker = BudgetTracker({"gemini": budget})
+
+        usage = tracker.record_usage(
+            "gemini", units=50, operation="gen", model="m1", unit_type="requests", force=True
+        )
+
+        assert usage.units == 50
+        assert budget.current_usage == 149  # recorded despite exceeding 100
+        assert budget.hard_stop_threshold == 100
+
+    def test_no_force_raises_on_hard_stop(self):
+        """force=False (default) raises BudgetExceededError on hard-stop."""
+        budget = self._gemini_budget()
+        budget.current_usage = 99
+        tracker = BudgetTracker({"gemini": budget})
+
+        with pytest.raises(BudgetExceededError):
+            tracker.record_usage(
+                "gemini", units=5, operation="gen", model="m1", unit_type="requests"
+            )
+        assert budget.current_usage == 99  # unchanged
+
+    def test_force_still_blocks_no_budget(self):
+        """force=True cannot bypass a missing/null local_budget."""
+        budget = ProviderBudget(
+            provider="gemini",
+            period=BudgetPeriod.PROVIDER_DEFINED,
+            official_limit=None,
+            local_budget=None,
+        )
+        tracker = BudgetTracker({"gemini": budget})
+
+        with pytest.raises(BudgetExceededError):
+            tracker.record_usage(
+                "gemini", units=10, operation="gen", model="m1", unit_type="tokens", force=True
+            )
+
+    def test_token_exhaustion_blocks_future_token_checks(self):
+        """After a forced token recording exceeds the budget, future token checks fail."""
+        budget = self._gemini_budget()
+        tracker = BudgetTracker({"gemini": budget})
+
+        tracker.record_usage(
+            "gemini", units=150, operation="gen", model="m1", unit_type="tokens", force=True
+        )
+
+        result = tracker.check_allowance(
+            "gemini", units=1, operation="gen", model="m1", unit_type="tokens"
+        )
+        assert result.status == BudgetStatus.HARD_STOP
+        assert result.current_usage == 150
+
+    def test_usage_by_unit_type_resets_on_daily_reset(self):
+        """Both current_usage and usage_by_unit_type are cleared on daily reset."""
+        budget = self._gemini_budget()
+        clock = MockClock(t(hour=12))
+        tracker = BudgetTracker({"gemini": budget}, clock=clock)
+
+        tracker.record_usage(
+            "gemini", units=30, operation="gen", model="m1", unit_type="tokens", force=True
+        )
+        tracker.record_usage(
+            "gemini", units=5, operation="gen", model="m1", unit_type="requests"
+        )
+        assert budget.usage_by_unit_type["tokens"] == 30
+
+        clock.advance(timedelta(hours=25))
+        tracker.check_allowance(
+            "gemini", units=1, operation="gen", model="m1", unit_type="tokens"
+        )
+        assert budget.usage_by_unit_type.get("tokens", 0) == 0
+        assert budget.current_usage == 0

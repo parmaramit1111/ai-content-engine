@@ -41,6 +41,9 @@ class AppSettings(BaseSettings):
     gemini_api_key: str | None = Field(
         default=None, description="Google Gemini API key — never commit to VCS"
     )
+    gemini_model: str | None = Field(
+        default=None, description="Gemini model name for text generation (e.g. gemini-2.0-flash)"
+    )
     asset_root: str = Field(default="./assets", description="Root directory for generated assets")
     config_root: str = Field(
         default="./config", description="Root directory for configuration files"
