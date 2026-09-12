@@ -29,6 +29,9 @@ dist/
 *.egg-info/
 *.egg
 
+# AI agent local state
+.ai/state/
+
 # IDE
 .vscode/
 .idea/
