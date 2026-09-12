@@ -21,6 +21,7 @@ dependencies = [
 dev = [
     "ruff>=0.6.0",
     "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0,<0.22.0",
     "mypy>=1.7.0",
 ]
 
@@ -30,6 +31,7 @@ packages = ["src/content_engine"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+asyncio_mode = "strict"
 
 [tool.ruff]
 line-length = 100

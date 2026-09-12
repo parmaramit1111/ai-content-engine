@@ -4,7 +4,8 @@
 - **Status:** ready
 - **Goal:** Transform a validated script into a scene-level storyboard and visual prompt package.
 - **Source of truth:** PRD FR-05 and FR-06; ARCHITECTURE §2 and §4.2.
-- **Dependencies:** 07-content-brief
+- **Dependencies:** 07-content-brief (transitively requires 05-content-generation, since
+  storyboard operates on the `Script` model produced in Phase 05)
 
 ## Scope
 
