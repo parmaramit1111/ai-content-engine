@@ -5,12 +5,14 @@ and budget tracking for the content generation workflow
 (PRD §6, ARCHITECTURE §2).
 """
 
+from content_engine.application.research_service import ResearchService
 from content_engine.application.script_service import (
     ScriptService,
     ScriptServiceError,
 )
 
 __all__ = [
+    "ResearchService",
     "ScriptService",
     "ScriptServiceError",
 ]

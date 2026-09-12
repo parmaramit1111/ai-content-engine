@@ -34,3 +34,11 @@ class Difficulty(StrEnum):
     BEGINNER = "beginner"
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
+
+
+class ResearchVerificationStatus(StrEnum):
+    """Human verification status for research notes (PRD §6, FR-02; ARCHITECTURE §8)."""
+
+    UNVERIFIED = "unverified"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
