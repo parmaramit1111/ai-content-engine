@@ -28,7 +28,9 @@ from content_engine.config import (
 
 class TestAppSettings:
     def test_defaults(self):
-        settings = AppSettings()
+        # Bypass the repo's local .env so this test reflects AppSettings'
+        # actual field defaults rather than a developer's real .env contents.
+        settings = AppSettings(_env_file=None)
         assert settings.env == "development"
         assert settings.gemini_api_key is None
         assert settings.asset_root == "./assets"
