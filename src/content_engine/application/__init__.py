@@ -5,6 +5,7 @@ and budget tracking for the content generation workflow
 (PRD §6, ARCHITECTURE §2).
 """
 
+from content_engine.application.brief_service import BriefService, BriefServiceError
 from content_engine.application.research_service import ResearchService
 from content_engine.application.script_service import (
     ScriptService,
@@ -12,6 +13,8 @@ from content_engine.application.script_service import (
 )
 
 __all__ = [
+    "BriefService",
+    "BriefServiceError",
     "ResearchService",
     "ScriptService",
     "ScriptServiceError",
