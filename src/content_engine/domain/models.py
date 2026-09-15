@@ -1,12 +1,13 @@
 """Core domain models for topics, research notes, briefs, scripts, scenes, storyboards,
-assets, audio tracks, and productions.
+assets, audio tracks, productions, reviews, and publication packages.
 
 Models follow the domain entities described in ARCHITECTURE.md §13:
     Topic, ResearchNotes, ContentBrief, Script, Scene, Asset, Production.
 
-``Storyboard`` extends this set for Phase 08 (PRD FR-05, FR-06) and
-``AudioTrack`` extends it for Phase 10 (PRD FR-07); neither is separately
-enumerated in ARCHITECTURE §13.
+``Storyboard`` extends this set for Phase 08 (PRD FR-05, FR-06),
+``AudioTrack`` extends it for Phase 10 (PRD FR-07), and ``Review``/
+``PublicationPackage`` extend it for Phase 11 (PRD FR-10, FR-11); none of
+these three are separately enumerated in ARCHITECTURE §13.
 """
 
 from datetime import UTC, datetime
@@ -21,6 +22,8 @@ from content_engine.domain.enums import (
     Difficulty,
     ProductionStatus,
     ResearchVerificationStatus,
+    ReviewCategory,
+    ReviewStatus,
     TopicStatus,
 )
 
@@ -150,6 +153,69 @@ class Production(BaseModel):
     )
     created_at: datetime = Field(
         default_factory=utc_now, description="When the production was assembled"
+    )
+
+
+class ChecklistItem(BaseModel):
+    """One reviewed category's pass/fail result and actionable note (PRD FR-10).
+
+    A single combined structure rather than a separate checklist dict plus
+    a parallel findings list, so a category's finding can never drift out
+    of sync with its pass/fail result.
+    """
+
+    passed: bool = Field(description="Whether this category passed review")
+    notes: str | None = Field(
+        default=None, description="Actionable note, expected when passed is False"
+    )
+
+
+class Review(BaseModel):
+    """A human review decision record for a Production (PRD FR-10; ARCHITECTURE §14, §19).
+
+    References its Production by id only — never embeds or modifies it;
+    ``Production`` remains immutable. Always starts ``PENDING``; creating a
+    Review never implies approval. ``ReviewService`` enforces that
+    ``APPROVED``/``REJECTED`` are terminal — this model only names the
+    possible states and carries the decision once made.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    production_id: UUID = Field(description="Reference to the Production being reviewed")
+    reviewer: str = Field(min_length=1, description="Human reviewer identifier/name")
+    checklist: dict[ReviewCategory, ChecklistItem] = Field(
+        description="Pass/fail + notes for each of the ten required review categories"
+    )
+    status: ReviewStatus = Field(
+        default=ReviewStatus.PENDING, description="Current human decision state"
+    )
+    reviewed_at: datetime | None = Field(
+        default=None, description="When the final approve/reject decision was made"
+    )
+    created_at: datetime = Field(default_factory=utc_now, description="When the review was created")
+
+
+class PublicationPackage(BaseModel):
+    """A preparation artifact for manual publication (PRD FR-11; ARCHITECTURE §14, §19).
+
+    Only ever produced from an APPROVED Review — packaging is the actual
+    human-approval gate. Copies only the two small path strings needed to
+    identify the final artifact; everything else is referenced by id, not
+    duplicated. No publishing action of any kind exists on this model.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    production_id: UUID = Field(description="Reference to the packaged Production")
+    review_id: UUID = Field(description="Reference to the approving Review")
+    output_path: str = Field(description="Copied from Production.output_path")
+    captions_path: str = Field(description="Copied from Production.captions_path")
+    title: str = Field(min_length=1, description="Publication title")
+    sources: list[str] = Field(default_factory=list, description="Source references")
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="Additional flexible publication metadata"
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now, description="When the package was created"
     )
 
 
