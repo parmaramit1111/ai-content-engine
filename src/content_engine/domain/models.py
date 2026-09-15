@@ -1,7 +1,7 @@
-"""Core domain models for topics, briefs, scripts, and scenes.
+"""Core domain models for topics, research notes, briefs, scripts, and scenes.
 
 Models follow the domain entities described in ARCHITECTURE.md §13:
-    Topic, ContentBrief, Script, Scene.
+    Topic, ResearchNotes, ContentBrief, Script, Scene.
 """
 
 from datetime import UTC, datetime
@@ -9,7 +9,12 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
-from content_engine.domain.enums import Category, Difficulty, TopicStatus
+from content_engine.domain.enums import (
+    Category,
+    Difficulty,
+    ResearchVerificationStatus,
+    TopicStatus,
+)
 
 
 def utc_now() -> datetime:
@@ -68,4 +73,69 @@ class Topic(BaseModel):
     created_at: datetime = Field(default_factory=utc_now, description="When the topic was created")
     updated_at: datetime = Field(
         default_factory=utc_now, description="When the topic was last updated"
+    )
+
+
+class ResearchNotes(BaseModel):
+    """Validated research notes supporting a content topic (PRD §6, FR-02; ARCHITECTURE §8, §13).
+
+    Research is associated with a Topic via ``topic_id``. Source references are tracked
+    in ``primary_sources``; ``Topic.source_refs`` is preserved separately and is not
+    duplicated here.
+
+    Required fields capture the minimum research information needed for brief generation:
+    key facts, terminology, examples, caveats, primary sources, and visual concepts.
+
+    Optional future metadata (notebooklm_session, source_notes, confidence_scores,
+    annotations) supports human-in-the-loop NotebookLM workflows without claiming
+    programmatic access to NotebookLM.
+    """
+
+    id: UUID = Field(default_factory=uuid4, description="Unique research record identifier")
+    topic_id: UUID = Field(description="Reference to the Topic this research supports")
+    key_facts: list[str] = Field(
+        default_factory=list, description="Factual points gathered during research"
+    )
+    terminology: list[str] = Field(
+        default_factory=list, description="Domain terms and definitions captured during research"
+    )
+    examples: list[str] = Field(
+        default_factory=list, description="Concrete examples gathered during research"
+    )
+    caveats: list[str] = Field(
+        default_factory=list, description="Known limitations or edge cases"
+    )
+    primary_sources: list[str] = Field(
+        default_factory=list, description="Source references (URLs or identifiers)"
+    )
+    visual_concepts: list[str] = Field(
+        default_factory=list, description="Visual directions tied to the topic"
+    )
+    verification_status: ResearchVerificationStatus = Field(
+        default=ResearchVerificationStatus.UNVERIFIED,
+        description="Human verification status of the research",
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now, description="When research was recorded"
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now, description="When research was last updated"
+    )
+
+    # --- Optional future metadata (NOT required for Phase 06) ---
+    notebooklm_session: str | None = Field(
+        default=None,
+        description="NotebookLM session ID/name (manual reference only — human-in-the-loop)",
+    )
+    source_notes: str | None = Field(
+        default=None,
+        description="Notes on which sources were used in NotebookLM",
+    )
+    confidence_scores: dict[str, float] | None = Field(
+        default=None,
+        description="Per-fact confidence scores (future metadata)",
+    )
+    annotations: str | None = Field(
+        default=None,
+        description="Researcher annotations (future metadata)",
     )
