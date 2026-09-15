@@ -374,6 +374,28 @@ class TestMediaProbingValidation:
 
         assert isinstance(production, Production)
 
+    def test_shorter_audio_duration_warns_not_rejects(self, tmp_path: Path):
+        """Symmetric to the longer-audio case above: audio shorter than the
+        total storyboard duration must also only warn, never reject, and
+        must never trigger any video-shortening/looping/stretching behavior."""
+        storyboard = _make_storyboard()  # total duration = 5.0 + 10.0 = 15.0s
+        assets = _resolved_assets(tmp_path, storyboard)
+        clip_durations = _fake_durations_matching(storyboard, assets)
+        audio_clip = tmp_path / "audio.mp3"
+        audio_clip.write_bytes(b"data")
+        audio_track = AudioTrack(
+            storyboard_id=storyboard.id, path=str(audio_clip), source="human_narration"
+        )
+        durations = {**clip_durations, str(audio_clip.resolve()): 2.0}
+        service = VideoAssemblyService(
+            asset_root=tmp_path, ffmpeg_runner=FakeFFmpegRunner(durations=durations)
+        )
+
+        with pytest.warns(UserWarning, match="AudioTrack duration"):
+            production = service.assemble(storyboard, assets, audio_track=audio_track)
+
+        assert isinstance(production, Production)
+
 
 class TestFiniteDurationValidation:
     """Fix 2: NaN/+inf/-inf probed durations must never silently pass the
