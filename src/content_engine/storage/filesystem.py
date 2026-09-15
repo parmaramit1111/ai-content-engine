@@ -27,6 +27,8 @@ from pydantic import BaseModel, ValidationError
 
 from content_engine.domain.models import (
     ContentBrief,
+    Production,
+    PublicationPackage,
     ResearchNotes,
     Review,
     Script,
@@ -61,6 +63,17 @@ class ContentStore:
         <content_root>/scripts/<id>.json
         <content_root>/storyboards/<id>.json
         <content_root>/reviews/<id>.json
+        <content_root>/productions/<id>.json
+        <content_root>/packages/<id>.json
+
+    ``productions`` and ``packages`` extend the original Phase 12 minimum
+    (Topic, ResearchNotes, ContentBrief, Script, Storyboard, Review): the
+    Phase 12B CLI needs a ``Production`` reloadable by id so
+    ``content review create`` can hand a real ``Production`` to
+    ``ReviewService.create_review`` across separate CLI invocations without
+    fabricating placeholder data, and a persisted ``PublicationPackage``
+    gives the final workflow artifact a durable record. This reuses the
+    same ``ContentStore``, not a second storage mechanism.
 
     Subdirectories are created automatically on first write. Saving an id
     that already has a file overwrites it — there is no separate "update"
@@ -122,6 +135,22 @@ class ContentStore:
 
     def load_review(self, review_id: UUID) -> Review:
         return self._load(Review, "reviews", review_id, "Review")
+
+    # ---- Production ----
+
+    def save_production(self, production: Production) -> Path:
+        return self._save(production, "productions", production.id)
+
+    def load_production(self, production_id: UUID) -> Production:
+        return self._load(Production, "productions", production_id, "Production")
+
+    # ---- PublicationPackage ----
+
+    def save_publication_package(self, package: PublicationPackage) -> Path:
+        return self._save(package, "packages", package.id)
+
+    def load_publication_package(self, package_id: UUID) -> PublicationPackage:
+        return self._load(PublicationPackage, "packages", package_id, "PublicationPackage")
 
     # ---- Shared helpers ----
 

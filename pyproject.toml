@@ -15,7 +15,11 @@ dependencies = [
     "pydantic-settings>=2.5.0",
     "pyyaml>=6.0",
     "google-genai>=2.0",
+    "typer>=0.12",
 ]
+
+[project.scripts]
+content = "content_engine.cli:app"
 
 [project.optional-dependencies]
 dev = [
@@ -39,6 +43,13 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "C4"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer's documented CLI-option idiom (`param: T = typer.Option(...)`) is a
+# function call in a default, which B008 otherwise flags as a mutable-default
+# footgun. Typer/Click's Option/Argument objects are immutable descriptors
+# built for exactly this use, so they're exempted rather than disabling B008.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.ruff.format]
 quote-style = "double"

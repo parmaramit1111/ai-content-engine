@@ -45,6 +45,9 @@ class AppSettings(BaseSettings):
         default=None, description="Gemini model name for text generation (e.g. gemini-2.0-flash)"
     )
     asset_root: str = Field(default="./assets", description="Root directory for generated assets")
+    content_root: str = Field(
+        default="./content", description="Root directory for content metadata artifacts"
+    )
     config_root: str = Field(
         default="./config", description="Root directory for configuration files"
     )

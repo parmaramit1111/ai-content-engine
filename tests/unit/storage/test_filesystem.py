@@ -2,8 +2,10 @@
 
 Covers:
 - Round-trip save/load for Topic, ResearchNotes, ContentBrief, Script,
-  Storyboard, Review — loaded objects must equal the originals exactly,
-  including UUIDs and timestamps.
+  Storyboard, Review, Production, PublicationPackage — loaded objects must
+  equal the originals exactly, including UUIDs and timestamps. The latter
+  two extend the original Phase 12 minimum to support the Phase 12B CLI
+  (see ``ContentStore``'s docstring for why).
 - Automatic subdirectory creation and the expected on-disk layout.
 - Missing-artifact errors (no file, path is a directory).
 - Malformed-artifact errors (invalid JSON, schema-invalid JSON).
@@ -26,6 +28,8 @@ from content_engine.domain.enums import (
 from content_engine.domain.models import (
     ChecklistItem,
     ContentBrief,
+    Production,
+    PublicationPackage,
     ResearchNotes,
     Review,
     Scene,
@@ -115,6 +119,29 @@ def _make_review(**overrides) -> Review:
     return Review(**defaults)
 
 
+def _make_production(**overrides) -> Production:
+    defaults: dict = {
+        "script_id": uuid4(),
+        "storyboard_id": uuid4(),
+        "captions_path": "/assets/subtitles/prod-1.srt",
+        "output_path": "/assets/final/prod-1.mp4",
+    }
+    defaults.update(overrides)
+    return Production(**defaults)
+
+
+def _make_package(**overrides) -> PublicationPackage:
+    defaults: dict = {
+        "production_id": uuid4(),
+        "review_id": uuid4(),
+        "output_path": "/assets/final/prod-1.mp4",
+        "captions_path": "/assets/subtitles/prod-1.srt",
+        "title": "Why Database Indexes Make Queries Faster",
+    }
+    defaults.update(overrides)
+    return PublicationPackage(**defaults)
+
+
 # --- Round-trip tests ---
 
 
@@ -176,6 +203,24 @@ class TestRoundTrip:
         assert restored == review
         assert set(restored.checklist.keys()) == set(ReviewCategory)
 
+    def test_production(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        production = _make_production()
+
+        store.save_production(production)
+        restored = store.load_production(production.id)
+
+        assert restored == production
+
+    def test_publication_package(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        package = _make_package()
+
+        store.save_publication_package(package)
+        restored = store.load_publication_package(package.id)
+
+        assert restored == package
+
 
 # --- Layout / directory creation ---
 
@@ -190,6 +235,8 @@ class TestArtifactLayout:
             ("save_script", "scripts", lambda: _make_script(uuid4())),
             ("save_storyboard", "storyboards", lambda: _make_storyboard(uuid4())),
             ("save_review", "reviews", lambda: _make_review()),
+            ("save_production", "productions", lambda: _make_production()),
+            ("save_publication_package", "packages", lambda: _make_package()),
         ],
     )
     def test_writes_under_expected_subdirectory(
@@ -271,6 +318,16 @@ class TestMissingArtifact:
         store = ContentStore(tmp_path)
         with pytest.raises(ArtifactNotFoundError, match="Review artifact not found"):
             store.load_review(uuid4())
+
+    def test_load_production_missing_raises(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        with pytest.raises(ArtifactNotFoundError, match="Production artifact not found"):
+            store.load_production(uuid4())
+
+    def test_load_publication_package_missing_raises(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        with pytest.raises(ArtifactNotFoundError, match="PublicationPackage artifact not found"):
+            store.load_publication_package(uuid4())
 
     def test_load_when_path_is_a_directory_raises(self, tmp_path: Path):
         store = ContentStore(tmp_path)
