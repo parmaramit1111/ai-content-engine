@@ -49,6 +49,22 @@ class AssetType(StrEnum):
 
     Only VIDEO is defined for Phase 09 — Google Flow's only output this
     project imports today. Not adding IMAGE/AUDIO speculatively.
+
+    Phase 10 audio is represented by the separate ``AudioTrack`` model,
+    not by extending this enum — narration/audio is production-level,
+    not scene-level visual media.
     """
 
     VIDEO = "video"
+
+
+class ProductionStatus(StrEnum):
+    """Result status of an assembled Production (PRD FR-08; ARCHITECTURE §13).
+
+    Only ASSEMBLED is defined for Phase 10 — a Production is only ever
+    constructed after a successful assembly; failures raise
+    VideoAssemblyServiceError rather than producing a failed record.
+    Review/publish states belong to a later phase if ever needed.
+    """
+
+    ASSEMBLED = "assembled"

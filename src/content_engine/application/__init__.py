@@ -16,6 +16,10 @@ from content_engine.application.storyboard_service import (
     StoryboardService,
     StoryboardServiceError,
 )
+from content_engine.application.video_assembly_service import (
+    VideoAssemblyService,
+    VideoAssemblyServiceError,
+)
 
 __all__ = [
     "AssetService",
@@ -27,4 +31,6 @@ __all__ = [
     "ScriptServiceError",
     "StoryboardService",
     "StoryboardServiceError",
+    "VideoAssemblyService",
+    "VideoAssemblyServiceError",
 ]
