@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-content-engine"
+version = "0.1.0"
+description = "AI-assisted content production engine for creating, validating, and publishing technical short-form videos."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{ name = "Parmar Amit" }]
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.5.0",
+    "pyyaml>=6.0",
+    "google-genai>=2.0",
+    "typer>=0.12",
+]
+
+[project.scripts]
+content = "content_engine.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0,<0.22.0",
+    "mypy>=1.7.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/content_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "strict"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "C4"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer's documented CLI-option idiom (`param: T = typer.Option(...)`) is a
+# function call in a default, which B008 otherwise flags as a mutable-default
+# footgun. Typer/Click's Option/Argument objects are immutable descriptors
+# built for exactly this use, so they're exempted rather than disabling B008.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
