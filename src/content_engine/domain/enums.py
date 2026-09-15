@@ -68,3 +68,41 @@ class ProductionStatus(StrEnum):
     """
 
     ASSEMBLED = "assembled"
+
+
+class ReviewCategory(StrEnum):
+    """The ten required human-review categories (PRD FR-10; ARCHITECTURE §14, §19).
+
+    A closed set — this enum must not gain additional values without a
+    corresponding PRD change, since Review checklist completeness is
+    validated against exactly this set.
+    """
+
+    TECHNICAL_ACCURACY = "technical_accuracy"
+    SOURCES = "sources"
+    CLARITY = "clarity"
+    HOOK = "hook"
+    PACING = "pacing"
+    VISUAL_RELEVANCE = "visual_relevance"
+    AI_ARTIFACTS = "ai_artifacts"
+    CAPTIONS = "captions"
+    BRAND_CONSISTENCY = "brand_consistency"
+    LICENSING = "licensing"
+
+
+class ReviewStatus(StrEnum):
+    """Human decision state for a Review (PRD FR-10; ARCHITECTURE §14).
+
+    Intentionally independent of TopicStatus — there is no reliable
+    Production-to-Topic identity chain to drive TopicStatus transitions
+    from here, and Phase 11 does not attempt to solve that. No PUBLISHED
+    value: publication is manual and entirely outside this model.
+
+    PENDING is the only non-terminal state; APPROVED/REJECTED are
+    terminal — ReviewService enforces this, this enum only names the
+    three possible values.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
