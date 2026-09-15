@@ -11,6 +11,10 @@ from content_engine.application.script_service import (
     ScriptService,
     ScriptServiceError,
 )
+from content_engine.application.storyboard_service import (
+    StoryboardService,
+    StoryboardServiceError,
+)
 
 __all__ = [
     "BriefService",
@@ -18,4 +22,6 @@ __all__ = [
     "ResearchService",
     "ScriptService",
     "ScriptServiceError",
+    "StoryboardService",
+    "StoryboardServiceError",
 ]

@@ -1,7 +1,10 @@
-"""Core domain models for topics, research notes, briefs, scripts, and scenes.
+"""Core domain models for topics, research notes, briefs, scripts, scenes, and storyboards.
 
 Models follow the domain entities described in ARCHITECTURE.md §13:
     Topic, ResearchNotes, ContentBrief, Script, Scene.
+
+``Storyboard`` extends this set for Phase 08 (PRD FR-05, FR-06) and is not
+separately enumerated in ARCHITECTURE §13.
 """
 
 from datetime import UTC, datetime
@@ -39,6 +42,20 @@ class Script(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     brief_id: UUID = Field(description="Reference to the ContentBrief this script is based on")
     version: int = Field(ge=1, default=1, description="Script version number, starting at 1")
+    scenes: list[Scene] = Field(default_factory=list, description="Ordered list of scenes")
+
+
+class Storyboard(BaseModel):
+    """Scene-level storyboard derived from a validated Script (PRD FR-05, FR-06).
+
+    Reuses ``Scene`` as-is — no separate ``StoryboardScene`` type. A storyboard's
+    scenes carry the same structural fields as the source ``Script``'s scenes
+    (number, duration, narration, onscreen_text, transition); only
+    ``visual_prompt`` is expected to differ, enriched for visual generation.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    script_id: UUID = Field(description="Reference to the Script this storyboard is based on")
     scenes: list[Scene] = Field(default_factory=list, description="Ordered list of scenes")
 
 
