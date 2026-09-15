@@ -25,6 +25,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
 
+from content_engine.domain.experiment import ExperimentRecord
 from content_engine.domain.models import (
     ContentBrief,
     Production,
@@ -35,6 +36,7 @@ from content_engine.domain.models import (
     Storyboard,
     Topic,
 )
+from content_engine.domain.workflow import WorkflowState
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
@@ -65,6 +67,8 @@ class ContentStore:
         <content_root>/reviews/<id>.json
         <content_root>/productions/<id>.json
         <content_root>/packages/<id>.json
+        <content_root>/workflow/<topic_id>.json
+        <content_root>/experiments/<topic_id>.json
 
     ``productions`` and ``packages`` extend the original Phase 12 minimum
     (Topic, ResearchNotes, ContentBrief, Script, Storyboard, Review): the
@@ -74,6 +78,13 @@ class ContentStore:
     fabricating placeholder data, and a persisted ``PublicationPackage``
     gives the final workflow artifact a durable record. This reuses the
     same ``ContentStore``, not a second storage mechanism.
+
+    ``workflow`` and ``experiments`` (Phase 12C) are keyed by ``topic_id``
+    instead of the model's own ``id`` — there is exactly one
+    ``WorkflowState`` and one ``ExperimentRecord`` per Topic, and
+    ``topic_id`` is the one identifier a human running the CLI always has
+    on hand. This is still the same generic ``_save``/``_load`` machinery;
+    only the id used as the filename differs.
 
     Subdirectories are created automatically on first write. Saving an id
     that already has a file overwrites it — there is no separate "update"
@@ -151,6 +162,37 @@ class ContentStore:
 
     def load_publication_package(self, package_id: UUID) -> PublicationPackage:
         return self._load(PublicationPackage, "packages", package_id, "PublicationPackage")
+
+    # ---- WorkflowState ----
+
+    def save_workflow_state(self, state: WorkflowState) -> Path:
+        return self._save(state, "workflow", state.topic_id)
+
+    def load_workflow_state(self, topic_id: UUID) -> WorkflowState:
+        return self._load(WorkflowState, "workflow", topic_id, "WorkflowState")
+
+    # ---- ExperimentRecord ----
+
+    def save_experiment_record(self, record: ExperimentRecord) -> Path:
+        return self._save(record, "experiments", record.topic_id)
+
+    def load_experiment_record(self, topic_id: UUID) -> ExperimentRecord:
+        return self._load(ExperimentRecord, "experiments", topic_id, "ExperimentRecord")
+
+    def list_experiment_records(self) -> list[ExperimentRecord]:
+        """Return every persisted ExperimentRecord, for `experiment list`/`export-csv`.
+
+        Reuses ``load_experiment_record`` per file so a corrupt record
+        raises the same ``ArtifactCorruptError`` (naming the exact path) as
+        loading it directly would.
+        """
+        directory = self._root / "experiments"
+        if not directory.is_dir():
+            return []
+        return [
+            self.load_experiment_record(UUID(path.stem))
+            for path in sorted(directory.glob("*.json"))
+        ]
 
     # ---- Shared helpers ----
 

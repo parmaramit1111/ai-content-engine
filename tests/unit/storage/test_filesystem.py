@@ -2,14 +2,17 @@
 
 Covers:
 - Round-trip save/load for Topic, ResearchNotes, ContentBrief, Script,
-  Storyboard, Review, Production, PublicationPackage — loaded objects must
-  equal the originals exactly, including UUIDs and timestamps. The latter
-  two extend the original Phase 12 minimum to support the Phase 12B CLI
-  (see ``ContentStore``'s docstring for why).
+  Storyboard, Review, Production, PublicationPackage, WorkflowState,
+  ExperimentRecord — loaded objects must equal the originals exactly,
+  including UUIDs and timestamps. The last four extend the original Phase
+  12 minimum (see ``ContentStore``'s docstring for why); WorkflowState/
+  ExperimentRecord (Phase 12C) are keyed by ``topic_id`` instead of an
+  ``.id`` field.
 - Automatic subdirectory creation and the expected on-disk layout.
 - Missing-artifact errors (no file, path is a directory).
 - Malformed-artifact errors (invalid JSON, schema-invalid JSON).
 - Overwrite-on-resave behavior.
+- `list_experiment_records` (empty, multiple, one corrupt file).
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from content_engine.domain.enums import (
     ResearchVerificationStatus,
     ReviewCategory,
 )
+from content_engine.domain.experiment import ExperimentRecord
 from content_engine.domain.models import (
     ChecklistItem,
     ContentBrief,
@@ -37,6 +41,7 @@ from content_engine.domain.models import (
     Storyboard,
     Topic,
 )
+from content_engine.domain.workflow import WorkflowState
 from content_engine.storage.filesystem import (
     ArtifactCorruptError,
     ArtifactNotFoundError,
@@ -142,6 +147,22 @@ def _make_package(**overrides) -> PublicationPackage:
     return PublicationPackage(**defaults)
 
 
+def _make_workflow_state(**overrides) -> WorkflowState:
+    defaults: dict = {"topic_id": uuid4()}
+    defaults.update(overrides)
+    return WorkflowState(**defaults)
+
+
+def _make_experiment_record(**overrides) -> ExperimentRecord:
+    defaults: dict = {
+        "topic_id": uuid4(),
+        "title": "Why Database Indexes Make Queries Faster",
+        "category": Category.BACKEND_ENGINEERING,
+    }
+    defaults.update(overrides)
+    return ExperimentRecord(**defaults)
+
+
 # --- Round-trip tests ---
 
 
@@ -221,6 +242,24 @@ class TestRoundTrip:
 
         assert restored == package
 
+    def test_workflow_state(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        state = _make_workflow_state(research_id=uuid4(), gemini_requests_used=3)
+
+        store.save_workflow_state(state)
+        restored = store.load_workflow_state(state.topic_id)
+
+        assert restored == state
+
+    def test_experiment_record(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        record = _make_experiment_record(regeneration_count=2, flow_credits_used=40)
+
+        store.save_experiment_record(record)
+        restored = store.load_experiment_record(record.topic_id)
+
+        assert restored == record
+
 
 # --- Layout / directory creation ---
 
@@ -248,6 +287,24 @@ class TestArtifactLayout:
         path = getattr(store, save_method)(artifact)
 
         assert path == tmp_path / subdir / f"{artifact.id}.json"
+        assert path.is_file()
+
+    @pytest.mark.parametrize(
+        ("save_method", "subdir", "make_artifact"),
+        [
+            ("save_workflow_state", "workflow", lambda: _make_workflow_state()),
+            ("save_experiment_record", "experiments", lambda: _make_experiment_record()),
+        ],
+    )
+    def test_writes_under_expected_subdirectory_keyed_by_topic_id(
+        self, tmp_path: Path, save_method: str, subdir: str, make_artifact
+    ):
+        store = ContentStore(tmp_path)
+        artifact = make_artifact()
+
+        path = getattr(store, save_method)(artifact)
+
+        assert path == tmp_path / subdir / f"{artifact.topic_id}.json"
         assert path.is_file()
 
     def test_creates_directories_automatically(self, tmp_path: Path):
@@ -329,6 +386,16 @@ class TestMissingArtifact:
         with pytest.raises(ArtifactNotFoundError, match="PublicationPackage artifact not found"):
             store.load_publication_package(uuid4())
 
+    def test_load_workflow_state_missing_raises(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        with pytest.raises(ArtifactNotFoundError, match="WorkflowState artifact not found"):
+            store.load_workflow_state(uuid4())
+
+    def test_load_experiment_record_missing_raises(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        with pytest.raises(ArtifactNotFoundError, match="ExperimentRecord artifact not found"):
+            store.load_experiment_record(uuid4())
+
     def test_load_when_path_is_a_directory_raises(self, tmp_path: Path):
         store = ContentStore(tmp_path)
         topic_id = uuid4()
@@ -373,3 +440,48 @@ class TestMalformedArtifact:
 
         with pytest.raises(ArtifactCorruptError, match="Malformed Review artifact"):
             store.load_review(review_id)
+
+    def test_load_workflow_state_malformed_raises(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        topic_id = uuid4()
+        bad_path = tmp_path / "workflow" / f"{topic_id}.json"
+        bad_path.parent.mkdir(parents=True)
+        bad_path.write_text("{not valid json", encoding="utf-8")
+
+        with pytest.raises(ArtifactCorruptError, match="Malformed WorkflowState artifact"):
+            store.load_workflow_state(topic_id)
+
+
+# --- ExperimentRecord listing ---
+
+
+class TestListExperimentRecords:
+    def test_empty_when_no_directory(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        assert store.list_experiment_records() == []
+
+    def test_empty_when_directory_has_no_files(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        (tmp_path / "experiments").mkdir()
+        assert store.list_experiment_records() == []
+
+    def test_lists_all_records(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        first = _make_experiment_record(title="Video A")
+        second = _make_experiment_record(title="Video B")
+        store.save_experiment_record(first)
+        store.save_experiment_record(second)
+
+        records = store.list_experiment_records()
+
+        assert {r.topic_id for r in records} == {first.topic_id, second.topic_id}
+
+    def test_corrupt_record_raises_with_path(self, tmp_path: Path):
+        store = ContentStore(tmp_path)
+        store.save_experiment_record(_make_experiment_record())
+        topic_id = uuid4()
+        bad_path = tmp_path / "experiments" / f"{topic_id}.json"
+        bad_path.write_text("{not valid json", encoding="utf-8")
+
+        with pytest.raises(ArtifactCorruptError, match="Malformed ExperimentRecord artifact"):
+            store.list_experiment_records()
