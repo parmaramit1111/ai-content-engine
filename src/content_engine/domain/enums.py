@@ -42,3 +42,13 @@ class ResearchVerificationStatus(StrEnum):
     UNVERIFIED = "unverified"
     VERIFIED = "verified"
     REJECTED = "rejected"
+
+
+class AssetType(StrEnum):
+    """Media type of an imported visual Asset (PRD FR-06; ARCHITECTURE §13).
+
+    Only VIDEO is defined for Phase 09 — Google Flow's only output this
+    project imports today. Not adding IMAGE/AUDIO speculatively.
+    """
+
+    VIDEO = "video"
