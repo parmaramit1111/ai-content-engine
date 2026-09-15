@@ -1,10 +1,12 @@
-"""Core domain models for topics, research notes, briefs, scripts, scenes, storyboards, and assets.
+"""Core domain models for topics, research notes, briefs, scripts, scenes, storyboards,
+assets, audio tracks, and productions.
 
 Models follow the domain entities described in ARCHITECTURE.md §13:
-    Topic, ResearchNotes, ContentBrief, Script, Scene, Asset.
+    Topic, ResearchNotes, ContentBrief, Script, Scene, Asset, Production.
 
-``Storyboard`` extends this set for Phase 08 (PRD FR-05, FR-06) and is not
-separately enumerated in ARCHITECTURE §13.
+``Storyboard`` extends this set for Phase 08 (PRD FR-05, FR-06) and
+``AudioTrack`` extends it for Phase 10 (PRD FR-07); neither is separately
+enumerated in ARCHITECTURE §13.
 """
 
 from datetime import UTC, datetime
@@ -17,6 +19,7 @@ from content_engine.domain.enums import (
     AssetType,
     Category,
     Difficulty,
+    ProductionStatus,
     ResearchVerificationStatus,
     TopicStatus,
 )
@@ -91,6 +94,63 @@ class Asset(BaseModel):
         default=None, description="Additional human-supplied metadata"
     )
     created_at: datetime = Field(default_factory=utc_now, description="When the asset was imported")
+
+
+class AudioTrack(BaseModel):
+    """A human-imported production-level narration/audio track (PRD FR-07; ARCHITECTURE §13).
+
+    Unlike ``Asset``, which is scene-level visual media, an AudioTrack is not
+    tied to a single scene — it represents narration/audio for the whole
+    production. References its storyboard by id only; does not duplicate
+    any Storyboard/Scene field. No TTS/audio generation happens here — the
+    file already exists and is only validated/described.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    storyboard_id: UUID = Field(
+        description="Reference to the Storyboard this audio track belongs to"
+    )
+    path: str = Field(description="Resolved local filesystem path to the audio file")
+    source: str = Field(description="High-level provenance, e.g. 'human_narration', 'local_tts'")
+    provider: str | None = Field(
+        default=None, description="Specific generation provider/tool, e.g. 'google_tts'"
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="Additional human-supplied metadata"
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now, description="When the audio track was imported"
+    )
+
+
+class Production(BaseModel):
+    """A successfully assembled video production (PRD FR-08; ARCHITECTURE §13).
+
+    Only ever constructed after a successful assembly by
+    ``VideoAssemblyService.assemble()`` — assembly failures raise
+    ``VideoAssemblyServiceError`` rather than producing a failed record.
+    References other models by id only; never embeds full domain objects.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    script_id: UUID = Field(description="Reference to the Script this production is based on")
+    storyboard_id: UUID = Field(
+        description="Reference to the Storyboard this production was assembled from"
+    )
+    asset_ids: list[UUID] = Field(
+        default_factory=list, description="Visual Assets used, one per scene"
+    )
+    audio_track_id: UUID | None = Field(
+        default=None, description="AudioTrack used, if any"
+    )
+    captions_path: str = Field(description="Path to the generated SRT captions file")
+    output_path: str = Field(description="Path to the final assembled MP4")
+    status: ProductionStatus = Field(
+        default=ProductionStatus.ASSEMBLED, description="Result status of the assembly"
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now, description="When the production was assembled"
+    )
 
 
 class ContentBrief(BaseModel):
