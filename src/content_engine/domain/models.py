@@ -1,18 +1,20 @@
-"""Core domain models for topics, research notes, briefs, scripts, scenes, and storyboards.
+"""Core domain models for topics, research notes, briefs, scripts, scenes, storyboards, and assets.
 
 Models follow the domain entities described in ARCHITECTURE.md §13:
-    Topic, ResearchNotes, ContentBrief, Script, Scene.
+    Topic, ResearchNotes, ContentBrief, Script, Scene, Asset.
 
 ``Storyboard`` extends this set for Phase 08 (PRD FR-05, FR-06) and is not
 separately enumerated in ARCHITECTURE §13.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
 from content_engine.domain.enums import (
+    AssetType,
     Category,
     Difficulty,
     ResearchVerificationStatus,
@@ -57,6 +59,38 @@ class Storyboard(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     script_id: UUID = Field(description="Reference to the Script this storyboard is based on")
     scenes: list[Scene] = Field(default_factory=list, description="Ordered list of scenes")
+
+
+class Asset(BaseModel):
+    """A human-imported visual asset associated with a Storyboard scene.
+
+    PRD FR-06; ARCHITECTURE §13.
+
+    Represents a Google Flow (or other human-produced) video clip that has
+    been brought into the local workflow and validated. References its
+    storyboard and scene by id/number only — it does not duplicate any
+    Storyboard/Scene field.
+
+    Multiple assets may exist for the same (storyboard_id, scene_number):
+    asset selection is not this model's concern.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    storyboard_id: UUID = Field(description="Reference to the Storyboard this asset belongs to")
+    scene_number: int = Field(ge=1, description="Scene number within the storyboard")
+    type: AssetType = Field(default=AssetType.VIDEO, description="Media type of the asset")
+    path: str = Field(description="Resolved local filesystem path to the asset file")
+    source: str = Field(description="High-level provenance, e.g. 'google_flow', 'manual'")
+    provider: str | None = Field(
+        default=None, description="Specific generation provider/model, e.g. 'veo-3.1-fast'"
+    )
+    flow_credits_used: int | None = Field(
+        default=None, ge=1, description="Human-reported Flow credits spent on this asset"
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="Additional human-supplied metadata"
+    )
+    created_at: datetime = Field(default_factory=utc_now, description="When the asset was imported")
 
 
 class ContentBrief(BaseModel):
